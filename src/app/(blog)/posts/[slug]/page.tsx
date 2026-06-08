@@ -1,21 +1,35 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { Marked } from "marked";
+import { marked } from "marked";
 import { codeToHtml } from "shiki";
 import { getPostBySlug } from "@/lib/actions/posts";
 
-const renderer = new Marked({
-  async: true,
-  renderer: {
-    code({ text, lang }) {
-      const language = (lang ?? "text").split(/\s/)[0];
-      return codeToHtml(text, { lang: language, theme: "github-light" }).catch(
-        () => `<pre><code>${text}</code></pre>`
-      ) as unknown as string;
-    },
-  },
-});
+function decodeEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+}
+
+async function renderMarkdown(content: string): Promise<string> {
+  let html = marked.parse(content) as string;
+  const codeBlockRe = /<pre><code(?:\s+class="language-([^"]*)")?>([^]*?)<\/code><\/pre>/g;
+  const matches = [...html.matchAll(codeBlockRe)];
+  for (const [original, lang, encodedCode] of matches) {
+    const code = decodeEntities(encodedCode);
+    const language = (lang ?? "text").split(/\s/)[0];
+    try {
+      const highlighted = await codeToHtml(code, { lang: language, theme: "github-light" });
+      html = html.replace(original, highlighted);
+    } catch {
+      // unsupported language — leave plain block intact
+    }
+  }
+  return html;
+}
 
 interface PostPageProps {
   params: Promise<{ slug: string }>;
@@ -58,7 +72,7 @@ export default async function PostPage({ params }: PostPageProps) {
   if (!result.success || !result.data) notFound();
 
   const post = result.data;
-  const html = await renderer.parse(post.content);
+  const html = await renderMarkdown(post.content);
 
   return (
     <article>
