@@ -15,12 +15,6 @@ async function seed() {
     console.log(`Created admin: ${user.email} (id: ${user.id})`);
   }
 
-  const postCount = await db.post.count();
-  if (postCount > 0) {
-    console.log(`Posts already seeded (${postCount} posts), skipping.`);
-    return;
-  }
-
   const posts = [
     {
       title: "用 Next.js 15 构建现代博客",
@@ -157,27 +151,28 @@ Tailwind CSS v4 是前端开发工具链的一大进步。`,
   ];
 
   for (const postData of posts) {
-    const { tags, ...rest } = postData;
-    await db.post.create({
-      data: {
-        ...rest,
-        authorId: user.id,
-        tags: {
-          create: tags.map((name) => ({
-            tag: {
-              connectOrCreate: {
-                where: { slug: name.toLowerCase().replace(/\s+/g, "-") },
-                create: {
-                  name,
-                  slug: name.toLowerCase().replace(/\s+/g, "-"),
-                },
-              },
-            },
-          })),
-        },
-      },
+    const { tags: tagNames, ...rest } = postData;
+
+    const existing = await db.post.findUnique({
+      where: { slug: rest.slug },
+      include: { tags: true },
     });
-    console.log(`Created post: ${rest.title}`);
+
+    const post = existing ?? (await db.post.create({ data: { ...rest, authorId: user.id } }));
+
+    for (const name of tagNames) {
+      const tagSlug = name.toLowerCase().replace(/\s+/g, "-");
+      let tag = await db.tag.findUnique({ where: { slug: tagSlug } });
+      if (!tag) {
+        tag = await db.tag.create({ data: { name, slug: tagSlug } });
+      }
+      const linkExists = existing?.tags.some((pt) => pt.tagId === tag!.id);
+      if (!linkExists) {
+        await db.postTag.create({ data: { postId: post.id, tagId: tag.id } });
+      }
+    }
+
+    console.log(`${existing ? "Patched" : "Created"} post: ${rest.title}`);
   }
 }
 
