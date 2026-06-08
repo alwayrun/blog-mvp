@@ -1,8 +1,21 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import Link from "next/link";
-import { marked } from "marked";
+import { Marked } from "marked";
+import { codeToHtml } from "shiki";
 import { getPostBySlug } from "@/lib/actions/posts";
+
+const renderer = new Marked({
+  async: true,
+  renderer: {
+    code({ text, lang }) {
+      const language = (lang ?? "text").split(/\s/)[0];
+      return codeToHtml(text, { lang: language, theme: "github-light" }).catch(
+        () => `<pre><code>${text}</code></pre>`
+      ) as unknown as string;
+    },
+  },
+});
 
 interface PostPageProps {
   params: Promise<{ slug: string }>;
@@ -45,7 +58,7 @@ export default async function PostPage({ params }: PostPageProps) {
   if (!result.success || !result.data) notFound();
 
   const post = result.data;
-  const html = await Promise.resolve(marked.parse(post.content));
+  const html = await renderer.parse(post.content);
 
   return (
     <article>
