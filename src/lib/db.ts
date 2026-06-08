@@ -1,6 +1,5 @@
 import { PrismaClient } from "@/generated/prisma/client";
 import { PrismaNeonHttp } from "@prisma/adapter-neon";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 
 const globalForPrisma = globalThis as unknown as { prisma: PrismaClient | undefined };
 
@@ -10,6 +9,10 @@ function createPrismaClient(): PrismaClient {
     const adapter = new PrismaNeonHttp(url, { fullResults: true });
     return new PrismaClient({ adapter });
   }
+  // Lazy require: only evaluated locally (never in Vercel/production)
+  // serverExternalPackages prevents Turbopack from bundling this native module
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { PrismaBetterSqlite3 } = require("@prisma/adapter-better-sqlite3") as typeof import("@prisma/adapter-better-sqlite3");
   const dbPath = url.replace("file:", "");
   const adapter = new PrismaBetterSqlite3({ url: dbPath });
   return new PrismaClient({ adapter });
